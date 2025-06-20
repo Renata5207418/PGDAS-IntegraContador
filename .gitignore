@@ -1,0 +1,6 @@
+.env
+*.pfx
+*.der
+__pycache__/
+venv/
+.env*
