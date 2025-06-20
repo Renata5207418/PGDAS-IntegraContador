@@ -7,14 +7,21 @@ from utils.uploader_serpro import enviar
 
 load_dotenv()
 
-rows = buscar_simples("18277532000136", pa="202505")
+rows = buscar_simples("00000000000000", pa="202505")
 
 payload_fiscal = montar_json(rows)
 tok = TokenAutenticacao()
 access, jwt = tok.obter_token()
 
 resp = enviar(payload_fiscal, access, jwt)
-pedido_id = resp["body"]["responseId"]
+print("Resposta imediata:", resp)
 
-resp_final = monitorar_pedido(pedido_id, tok)
-print(resp_final)
+# ------------------------------------------------------------
+# só monitora se o SERPRO disse que o pedido ainda está em fila
+# ------------------------------------------------------------
+if resp["status"] == 202:
+    pedido_id = resp["body"]["responseId"]
+    resp_final = monitorar_pedido(pedido_id, tok)
+    print(resp_final)
+else:
+    print(resp)
