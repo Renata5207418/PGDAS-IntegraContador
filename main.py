@@ -8,7 +8,8 @@ from utils.uploader_serpro import enviar
 
 load_dotenv()
 
-# 1) busca dados e monta payload em memóri
+
+# 1) busca dados e monta payload em memória
 rows = buscar_simples("00000000000100", pa="202505")
 payload_fiscal = montar_json(rows)
 
@@ -21,7 +22,11 @@ tok = TokenAutenticacao()
 access, jwt = tok.obter_token()
 resp = enviar(payload_fiscal, access, jwt)
 
-# 4) monitora se estiver em fila
+print("Resposta imediata:", resp)
+
+# ------------------------------------------------------------
+# só monitora se o SERPRO disse que o pedido ainda está em fila
+# ------------------------------------------------------------
 if resp["status"] == 202:
     pedido_id = resp["body"]["responseId"]
     resp_final = monitorar_pedido(pedido_id, tok)
