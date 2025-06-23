@@ -1,14 +1,13 @@
 from __future__ import annotations
 from datetime import datetime, date
-from typing import Dict, Any, Iterable, Tuple, Optional
-from dicionario_id.id_atividade import id_atividade
+from typing import Dict, Any, Iterable
+from dicionario_id.segment_rules import SEGMENT_RULES
 
 
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # utilidades de data / PA
-# ------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 def _as_date(val) -> date:
-    """Converte *val* (str|datetime|date) → date."""
     if isinstance(val, date):
         return val
     if isinstance(val, datetime):
@@ -19,14 +18,12 @@ def _as_date(val) -> date:
 
 
 def _pa_from_date(dt: date) -> int:
-    """date → inteiro AAAAMM (período de apuração)."""
     return dt.year * 100 + dt.month
 
 
 def _pa_anteriores(pa_atual: int, n: int) -> list[int]:
-    """Retorna os *n* PAs imediatamente anteriores a *pa_atual*."""
     ano, mes = divmod(pa_atual, 100)
-    res: list[int] = []
+    res = []
     for _ in range(n):
         mes -= 1
         if mes == 0:
@@ -35,113 +32,72 @@ def _pa_anteriores(pa_atual: int, n: int) -> list[int]:
     return res
 
 
-# -----------------------------------------------------------------------------
-#  FOLHA - IMPLEMENTAÇÃO FUTURA CASO NECESSÁRIO....
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# folha – stub
+# ---------------------------------------------------------------------------
 def buscar_folha(_cnpj: str, _pa: int) -> float | None:
-    """Stub.  Quando tiver a consulta pronta, devolva o valor da folha."""
     return None
 
 
 def _folhas_salario(cnpj: str, pa: int) -> list[dict[str, float]]:
-    """
-    Gera a lista de folhas de salário (12 PAs anteriores).
-    • Se **todos** os valores forem zero/None → devolve lista vazia
-      e o campo nem chega a ser enviado na API.
-    """
-    folhas: list[dict[str, float]] = []
-    tem_valor = False
-
+    folhas, tem_valor = [], False
     for pa_ant in _pa_anteriores(pa, 12):
         valor = buscar_folha(cnpj, pa_ant) or 0.0
         if valor:
             tem_valor = True
         folhas.append({"pa": pa_ant, "valor": round(valor, 2)})
-
     return folhas if tem_valor else []
 
 
-# -----------------------------------------------------------------------------
-#  Mercado Interno × Externo
-# -----------------------------------------------------------------------------
-#  -- adicionar novos IDs de exportação quando surgir necessidade
-_IDS_MERCADO_EXTERNO: set[int] = {29, 30, 31, 32, 33, 38, 39, 43}
-
-
-def _linha_eh_externa(r: Dict[str, Any], cache_id: dict[Tuple[int, int, int], Optional[int]]) -> bool:
-    """True se a linha pertence a atividade de exportação."""
-    anexo, secao, tabela = r["anexo"], r["secao"], r["tabela"]
-    chave = (anexo, secao, tabela)
-    if chave not in cache_id:
-        cache_id[chave] = id_atividade(
-            anexo, secao, tabela, _as_date(r["data_sim"])
-        )
-    ida = cache_id[chave]
-    return ida in _IDS_MERCADO_EXTERNO
+# ---------------------------------------------------------------------------
+# mercado interno × externo
+# ---------------------------------------------------------------------------
+_IDS_MERCADO_EXTERNO = {29, 30, 31, 32, 33, 38, 39, 43}
 
 
 def _totais_mi_mx(rows: Iterable[Dict[str, Any]]) -> tuple[float, float]:
-    """Soma separada de receitas: (interno, externo)."""
-    cache_id: dict[tuple[int, int, int], Optional[int]] = {}
     total_int = total_ext = 0.0
-
     for r in rows:
-        basen = float(r["basen"] or 0)
         anexo, secao, tabela = r["anexo"], r["secao"], r["tabela"]
-        chave = (anexo, secao, tabela)
-
-        if chave not in cache_id:
-            cache_id[chave] = id_atividade(
-                anexo, secao, tabela, _as_date(r["data_sim"])
-            )
-        ida = cache_id[chave]
-        if ida is None:
+        if (anexo, secao, tabela) == (0, 0, 0):           # ignora linhas “fantasma”
             continue
+        basen = float(r["basen"] or 0)
+        ida = SEGMENT_RULES[(anexo, secao, tabela)]["id"]
         if ida in _IDS_MERCADO_EXTERNO:
             total_ext += basen
         else:
             total_int += basen
-
     return round(total_int, 2), round(total_ext, 2)
 
 
-# -----------------------------------------------------------------------------
-# Montar o JSON e limpar campos não obrigátorios.
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# limpar campos vazios
+# ---------------------------------------------------------------------------
 def _clean(obj: Any) -> Any:
-    """Remove recursivamente valores None, [] ou {} do objeto."""
     if isinstance(obj, dict):
-        out = {}
-        for k, v in obj.items():
-            v_clean = _clean(v)
-            if v_clean not in (None, [], {}):
-                out[k] = v_clean
-        return out
+        return {k: _clean(v) for k, v in obj.items() if v not in (None, [], {})}
     if isinstance(obj, list):
         cleaned = [_clean(i) for i in obj]
         return [i for i in cleaned if i not in (None, [], {})]
     return obj
 
 
+# ---------------------------------------------------------------------------
+# montar JSON PGDAS-D
+# ---------------------------------------------------------------------------
 def montar_json(rows: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Constrói o JSON de transmissão do PGDAS-D a partir das linhas
-    retornadas por `buscar_simples()`.
-    """
     rows = list(rows)
     if not rows:
         raise ValueError("Lista de registros vazia")
 
     pa = _pa_from_date(_as_date(rows[0]["data_sim"]))
     cnpj_matriz = rows[0]["cgce_emp"]
-
     receita_int, receita_ext = _totais_mi_mx(rows)
 
     declaracao = {
         "tipoDeclaracao": 1,
         "receitaPaCompetenciaInterno": receita_int,
         "receitaPaCompetenciaExterno": receita_ext,
-        # todos abaixo são opcionais – só ficam se >0 / não vazio
         "receitaPaCaixaInterno": None,
         "receitaPaCaixaExterno": None,
         "valorFixoIcms": None,
@@ -161,22 +117,17 @@ def montar_json(rows: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         "valoresParaComparacao": []
     }
 
-    # ─────────────── mapeia atividades por estabelecimento ──────────────────
+    # ─── agrega receitas por estabelecimento / atividade ───────────────
     mapa_estab: dict[int, dict[str, Any]] = {}
-    cache_id: dict[Tuple[int, int, int], Optional[int]] = {}
 
     for r in rows:
-        basen = float(r["basen"] or 0)
-        chave = (r["anexo"], r["secao"], r["tabela"])
-
-        if chave not in cache_id:
-            anexo, secao, tabela = chave
-            cache_id[chave] = id_atividade(
-                anexo, secao, tabela, _as_date(r["data_sim"])
-            )
-        ida = cache_id[chave]
-        if ida is None:
+        anexo, secao, tabela = r["anexo"], r["secao"], r["tabela"]
+        if (anexo, secao, tabela) == (0, 0, 0):
             continue
+        basen = float(r["basen"] or 0)
+
+        cfg = SEGMENT_RULES[(anexo, secao, tabela)]
+        ida, quali = cfg["id"], cfg["quali"]
 
         est = mapa_estab.setdefault(
             r["codi_emp"],
@@ -189,13 +140,16 @@ def montar_json(rows: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
                 atv["receitasAtividade"][0]["valor"] += basen
                 break
         else:
-            est["atividades"].append({
+            nova = {
                 "idAtividade": ida,
                 "valorAtividade": basen,
-                "receitasAtividade": [{"valor": basen}]
-            })
+                "receitasAtividade": [{"valor": basen}],
+            }
+            if quali:
+                nova["receitasAtividade"][0]["qualificacoesTributarias"] = [
+                    {"codigoTributo": k, "id": v} for k, v in quali.items()
+                ]
+            est["atividades"].append(nova)
 
     declaracao["estabelecimentos"] = list(mapa_estab.values())
-
-    # ───────────────────── limpeza final de campos vazios ───────────────────
     return _clean(payload)

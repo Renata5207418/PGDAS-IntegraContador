@@ -1,0 +1,31 @@
+{
+        "cnpjCompleto": "00000000000100",
+        "pa": 202101,
+        "indicadorTransmissao": true,
+        "indicadorComparacao": false,
+        "declaracao": {
+            "tipoDeclaracao": 1,
+            "receitaPaCompetenciaInterno": 265122.61,
+            "receitaPaCompetenciaExterno": 0.00,
+            "estabelecimentos": [{
+                "cnpjCompleto": "0000000000100",
+                "atividades": [{
+                    "idAtividade": 11,
+                    "valorAtividade": 265122.61,
+                    "receitasAtividade": [{
+                        "valor": 265122.61 // O SEU OBJETO ESTA AQUI
+                    }]
+                }]
+            }]
+        }
+}
+
+// ANEXO - SECAO - TABELA == idAtividade
+
+332 == 11
+322 == 13
+342 == 15
+
+111 === 2
+112 === 2
+

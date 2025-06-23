@@ -1,8 +1,9 @@
+# scripts/make_segment_rules.py
+from pathlib import Path
+from datetime import datetime, date
 from database.dominio_db import DatabaseConnection, DB_PARAMS
-from datetime import datetime
 
-
-sql = """
+SQL = """
 SELECT  t.anexo,
         t.secao,
         t.tabela,
@@ -21,17 +22,46 @@ JOIN (
 ORDER BY t.anexo, t.secao, t.tabela
 """
 
+# ─── consulta ───────────────────────────────────────────────
 db = DatabaseConnection(**DB_PARAMS)
 db.connect()
-rows = db.execute_query(sql)
+rows = db.execute_query(SQL)
 db.close()
 
-for a, s, ta, vig, desc in rows:
-    # caso vig já seja date/datetime, deixa como está
-    if isinstance(vig, str):
-        # banco costuma entregar '2025-01-01 00:00:00.000'
-        vig = datetime.strptime(vig.split()[0], "%Y-%m-%d").date()
-    elif isinstance(vig, datetime):
-        vig = vig.date()
+# ─── escreve o módulo ───────────────────────────────────────
+out_lines = [
+    '"""',
+    'segment_rules.py  –  GERADO AUTOMATICAMENTE; preencha id/quali nas linhas desejadas.',
+    '"""',
+    '',
+    'from types import MappingProxyType',
+    '',
+    '_SEGMENT_RULES = {'
+]
 
-    print(f"{a}-{s}-{ta} ({vig:%Y-%m-%d}) → {desc}")
+for a, s, t, vig_raw, desc in rows:
+    # normaliza data (string ou datetime → YYYY-MM-DD)
+    if isinstance(vig_raw, str):
+        vig = datetime.strptime(vig_raw.split()[0], "%Y-%m-%d").date()
+    elif isinstance(vig_raw, datetime):
+        vig = vig_raw.date()
+    else:
+        vig = vig_raw  # já é date
+
+    # entrada com id=None para ser preenchida depois
+    out_lines.append(
+        f'    ({a}, {s}, {t}): {{"id": None, "quali": {{}}}},   # vig {vig}, {desc.strip()}'
+    )
+
+out_lines += [
+    '}',
+    '',
+    'SEGMENT_RULES = MappingProxyType(_SEGMENT_RULES)',
+    "__all__ = ['SEGMENT_RULES']",
+]
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]   # PgDas/
+OUT_FILE = PROJECT_ROOT / "dicionario_id" / "segment_rules.py"
+OUT_FILE.parent.mkdir(parents=True, exist_ok=True)   # garante que existe
+OUT_FILE.write_text("\n".join(out_lines), encoding="utf-8")
+print("segment_rules.py criado em", OUT_FILE.relative_to(PROJECT_ROOT))

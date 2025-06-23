@@ -1,0 +1,163 @@
+Quando NÃO, Não é um campo obrigátorio.
+
+{
+        "cnpjCompleto": "00000000000100",
+        "pa": 202101 (periodo de apuração) ,
+        "indicadorTransmissao": true (true deve ser transmitida, false devolve os valores sem transmitir),
+        "indicadorComparacao": true,
+        "declaracao": {
+            "tipoDeclaracao": 1 (original) 2 (retificadora),
+            "receitaPaCompetenciaInterno": 10000.00,
+            "receitaPaCompetenciaExterno": 0.00,
+            "receitaPaCaixaInterno": null, -> NÃO
+            "receitaPaCaixaExterno": null, -> NÃO
+            "valorFixoIcms": 100.00,       -> NÃO
+            "valorFixoIss": null,          -> NÃO
+            "receitasBrutasAnteriores": [{  -> NÃO
+                "pa": 202001 (periodo de apuração),
+                "valorInterno": 100.00, valor no mercado interno ?
+                "valorExterno": 200.00 valor no mercado externo  ?
+        }, {
+                "pa": 202002,
+                "valorInterno": 300.00,
+                "valorExterno": 0.00
+            }, {
+                "pa": 202003,
+                "valorInterno": 0.00,
+                "valorExterno": 0.00
+            }, {
+                "pa": 202004,
+                "valorInterno": 0.00,
+                "valorExterno": 0.00
+            }, {
+                "pa": 202005,
+                "valorInterno": 0.00,
+                "valorExterno": 0.00
+            }, {
+                "pa": 202006,
+                "valorInterno": 0.00,
+                "valorExterno": 0.00
+            }, {
+                "pa": 202007,
+                "valorInterno": 0.00,
+                "valorExterno": 0.00
+            }, {
+                "pa": 202008,
+                "valorInterno": 0.00,
+                "valorExterno": 0.00
+            }, {
+                "pa": 202009,
+                "valorInterno": 0.00,
+                "valorExterno": 0.00
+            }, {
+                "pa": 202010,
+                "valorInterno": 0.00,
+                "valorExterno": 0.00
+            }, {
+                "pa": 202011,
+                "valorInterno": 0.00,
+                "valorExterno": 0.00
+            }, {
+                "pa": 202012,
+                "valorInterno": 0.00,
+                "valorExterno": 0.00
+            }],
+            "folhasSalario": [{   -> NÃO
+                "pa": 202001,
+                "valor": 2000.00
+                }, {
+                "pa": 202002,
+                "valor": 2000.00
+                }, {
+                "pa": 202003,
+                "valor": 2000.00
+                }, {
+                "pa": 202004,
+                "valor": 2000.00
+                }, {
+                "pa": 202005,
+                "valor": 0.00
+                }, {
+                "pa": 202006,
+                "valor": 0.00
+                }, {
+                "pa": 202007,
+                "valor": 0.00
+                }, {
+                "pa": 202008,
+                "valor": 0.00
+                }, {
+                "pa": 202009,
+                "valor": 0.00
+                }, {
+                "pa": 202010,
+                "valor": 0.00
+                }, {
+                "pa": 202011,
+                "valor": 0.00
+                }, {
+                "pa": 202012,
+                "valor": 0.00
+            }],
+            "naoOptante": null,  -> NÃO
+            "estabelecimentos": [{   -> Deve conter todos os estabelecimentos vigentes à época do período de apuração da declaração.
+                "cnpjCompleto": "0000000000100",
+                "atividades": [{
+                    "idAtividade": 1,
+                    "valorAtividade": 4000.00,
+                    "receitasAtividade": [{
+                        "valor": 4000.00,
+                        "codigoOutroMunicipio": null,
+                        "outraUf": null,
+                        "isencoes": [{
+                            "codTributo": 1007,
+                            "valor": 100.00,
+                            "identificador": 1 -> tipo de redução 1 =Normal 2 = Cesta básica
+                        }],
+                        "reducoes": [{
+                            "codTributo": 1007,
+                            "valor": 1500.00,
+                            "percentualReducao": 50.00,
+                            "identificador": 1 -> tipo de redução 1 =Normal 2 = Cesta básica
+                        }],
+                        "qualificacoesTributarias": [], -> Código do tributo(tabela Códigos de Tributo) e id da qualificação(tabela Qualificação Tributária)
+                        "exigibilidadesSuspensas": null -> codTributo, numeroProcesso, uf, vara, existeDeposito, motivo
+                    }]
+                }, {
+                    "idAtividade": 10,
+                    "valorAtividade": 6000.00,
+                    "receitasAtividade": [{
+                        "valor": 6000.00,
+                        "codigoOutroMunicipio": 9701,
+                        "outraUf": "DF",
+                        "isencoes": null,
+                        "reducoes": null,
+                        "qualificacoesTributarias": null,
+                        "exigibilidadesSuspensas": null
+                    }]
+                }]
+            }]
+        },
+        "valoresParaComparacao": [{ -> NÃO
+            "codigoTributo": 1001,
+            "valor": 23.20
+        }, {
+            "codigoTributo": 1002,
+            "valor": 18.20
+        }, {
+            "codigoTributo": 1004,
+            "valor": 66.53
+        }, {
+            "codigoTributo": 1005,
+            "valor": 14.43
+        }, {
+            "codigoTributo": 1006,
+            "valor": 222.64
+        }, {
+            "codigoTributo": 1007,
+            "valor": 100.00
+        }, {
+            "codigoTributo": 1010,
+            "valor": 120.60
+        }]
+    }
