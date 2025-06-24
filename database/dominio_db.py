@@ -1,9 +1,10 @@
 import os
+import re
 import logging
 import sqlanydb
 from datetime import date
 from dotenv import load_dotenv
-from typing import Iterable, Optional, Tuple, List, Dict, Any
+from typing import Iterable, Optional, Tuple, List, Dict
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
@@ -75,7 +76,7 @@ DB_PARAMS = {
 
 
 def buscar_simples(
-    cnpj: str,
+    cnpj_raiz: str,
     anexo: Optional[int] = None,
     secao: Optional[int] = None,
     pa: Optional[str] = None,
@@ -88,8 +89,10 @@ def buscar_simples(
     • Ou use `data_ini`/`data_fim` para intervalo.
     """
 
-    filtros = ["ge.cgce_emp = ?"]
-    params: List = [cnpj]
+    clean = re.sub(r"\D", "", cnpj_raiz)[:8]
+    raiz = clean[:8] if len(clean) >= 8 else clean
+    filtros = ["ge.cgce_emp LIKE ?"]
+    params: List = [f"{raiz}%"]
 
     # ----- PA único ------------------------------------------------------
     if pa:
@@ -114,15 +117,16 @@ def buscar_simples(
 
     sql = f"""
         SELECT ge.codi_emp,
-               ge.cgce_emp AS cgce_emp,
-               sn.anexo,
-               sn.secao,
-               sn.tabela,
-               sn.basen,
-               sn.data_sim
-          FROM bethadba.efsdoimp_simples_nacional sn
-          JOIN bethadba.geempre ge ON ge.codi_emp = sn.codi_emp
-          WHERE {" AND ".join(filtros)}
+           ge.cgce_emp AS cgce_emp,
+           sn.filial,
+           sn.anexo,
+           sn.secao,
+           sn.tabela,
+           sn.basen,
+           sn.data_sim
+         FROM bethadba.efsdoimp_simples_nacional sn
+         JOIN bethadba.geempre ge ON ge.codi_emp = sn.filial
+        WHERE {" AND ".join(filtros)}
     """
 
     db = DatabaseConnection(**DB_PARAMS)
@@ -133,10 +137,11 @@ def buscar_simples(
     return [
         {"codi_emp": r[0],
          "cgce_emp": r[1],
-         "anexo": r[2],
-         "secao": r[3],
-         "tabela": r[4],
-         "basen": r[5],
-         "data_sim": r[6]}
+         "filial": r[2],
+         "anexo": r[3],
+         "secao": r[4],
+         "tabela": r[5],
+         "basen": r[6],
+         "data_sim": r[7]}
         for r in rows
     ]

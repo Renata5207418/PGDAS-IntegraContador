@@ -1,100 +1,244 @@
-# Integra-SN • PGDAS-D Automation
+# PgDas
 
-Automatiza a geração, validação e (opcionalmente) **transmissão** da declaração mensal do Simples Nacional (PGDAS-D) a partir do banco *Domínio Sistemas* até a API **Integra SN – SERPRO**.
+Automatiza a geração e transmissão de declarações PGDAS-D ao SERPRO, com suporte a OAuth2 + mTLS, persistência em
+SQLite e monitoramento de pedidos.
 
 ---
 
-## 1 • Fluxo resumido
+## Índice
 
-```mermaid
-flowchart LR
-    A[Domínio / SQL Anywhere] -- buscar_simples() --> B(json_builder.py)
-    B --> C(save_json.py)
-    C -- opcional --> local[📁 json/AAAAmm/*.json]
-    B -->|payload| D(uploader_serpro.py)
-    D -->|POST Declarar| E(SERPRO Integra SN)
+- [Descrição](#descrição)  
+- [Funcionalidades](#funcionalidades)  
+- [Tecnologias](#tecnologias)  
+- [Pré-requisitos](#pré-requisitos)  
+- [Instalação](#instalação)  
+- [Configuração](#configuração)  
+- [Uso](#uso)  
+- [Estrutura de Diretórios](#estrutura-de-diretórios)  
+- [Testes](#testes)  
+- [Contribuição](#contribuição)  
+- [Licença](#licença)  
+- [Autor](#autor)  
+
+---
+
+## Descrição
+
+O **PgDas** é um utilitário em Python que:
+
+1. Conecta ao banco Domínio (SQL Anywhere) para extrair dados de receita do Simples Nacional.  
+2. Constrói o JSON de declaração conforme especificação PGDAS-D.  
+3. Salva localmente o payload em `json/AAAAMM/` para auditoria.  
+4. Transmite ao SERPRO via OAuth 2.0 + mTLS e API key.  
+5. Monitora o pedido de transmissão até conclusão.  
+6. Persiste histórico e resultados (sucesso/falha) em banco SQLite (`pgdas.db`).  
+
+---
+
+## Funcionalidades
+
+- 💼 **Autenticação**: OAuth2 + mTLS (PKCS#12) com cache de token.  
+- 📊 **Construção de Payload**: agrupa receitas por estabelecimento e atividade, calcula internos × externos.  
+- 📁 **Salvar JSON**: gera arquivos em `json/AAAAMM/`, com opção “pretty” para debug.  
+- 📡 **Transmissão**: envia e monitora via endpoints `/Declarar` e `/Monitorar`.  
+- 🗄️ **Banco Local**: SQLite para rastrear status, payload e resposta (incluindo PDF base64).  
+- 🔄 **API REST**: rota Flask `/transmitir-pgdas` para integração com outros sistemas.  
+
+---
+
+## Tecnologias
+
+- Python 3.10+  
+- Flask  
+- sqlite3  
+- requests, requests-pkcs12  
+- python-dotenv  
+- cryptography  
+- sqlanydb  
+- typing, pathlib, logging  
+
+---
+
+## Pré-requisitos
+
+- Python 3.10 ou superior  
+- `pip`  
+- (Opcional) Virtualenv  
+
+---
+
+## Instalação
+
+1. Clone o repositório:  
+   ```bash
+   git clone https://…/PgDas.git
+   cd PgDas
+````
+
+2. Crie e ative um virtualenv (opcional):
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate    # Linux/macOS
+   .venv\Scripts\activate       # Windows
+   ```
+3. Instale dependências:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. Inicialize o banco SQLite:
+
+   ```bash
+   # Será executado automaticamente ao iniciar o app
+   python main.py
+   ```
+
+---
+
+## Configuração
+
+Copie o arquivo de exemplo `.env.example` para `.env` e preencha:
+
+```dotenv
+# Certificado PKCS#12 (mTLS)
+CAMINHO_CERTIFICADO=/caminho/para/cert
+NOME_CERTIFICADO=meu_cert.pfx
+SENHA_CERTIFICADO=senha_do_pfx
+
+# OAuth2
+CONSUMER_KEY=seu_consumer_key
+CONSUMER_SECRET=seu_consumer_secret
+URL_AUTENTICACAO=https://gateway.apiserpro.gov.br/token
+
+# Endpoints SERPRO
+URL_BASE=https://gateway.apiserpro.gov.br/integra-sn
+API_KEY_SERPRO=sua_api_key
+CNPJ_CONT=00000000000191
+
+# Domínio (SQL Anywhere)
+DB_HOST=...
+DB_PORT=2638
+DB_NAME=...
+DB_USER=...
+DB_PASS=...
+
+# Flask
+PORT=5000
 ```
 
-1. **`buscar_simples()`** – extrai no banco Domínio as receitas do período.
-2. **`montar_json()`** – calcula totais, mapeia idAtividade (heurística + fuzzy) e gera o *payload* fiscal.
-3. **`save_json.py`** – grava uma cópia legível/compacta para auditoria.
-4. **`uploader_serpro.py`** – envelopa o payload, assina-o com *Bearer + JWT* e envia ao endpoint `/Declarar`.
+> **Observação:** reveja `indicadorTransmissao` e `indicadorComparacao` em `utils/json_builder.py` antes de ir para produção.
 
 ---
 
-## 2 • Estrutura
+## Uso
+
+### Via API REST
+
+Faça um **POST** para `/transmitir-pgdas`:
+
+```bash
+curl -X POST http://localhost:5000/transmitir-pgdas \
+  -H "Content-Type: application/json" \
+  -d '{
+        "pa": 202505,
+        "cnpjs": ["11111111000191","22222222000199"]
+      }'
+```
+
+**Resposta JSON**:
+
+```json
+{
+  "pa": 202505,
+  "resultados": [
+    {
+      "cnpj": "11111111000191",
+      "status": "SUCESSO",
+      "valoresDevidos": [ ... ]
+    },
+    {
+      "cnpj": "22222222000199",
+      "status": "FALHA",
+      "erro": "mensagem de erro…"
+    }
+  ]
+}
+```
+
+### Script direto
+
+```bash
+python main.py
+```
+
+A aplicação roda em `http://0.0.0.0:<PORT>`.
+
+---
+
+## Estrutura de Diretórios
 
 ```
 PgDas/
-│
-├── auth/                 # OAuth 2.0 + mTLS
-│   └── token_auth.py
+├── .venv/                      # Virtualenv (opcional)
+├── auth/
+│   └── token_auth.py           # OAuth2 + mTLS (PKCS#12)
 ├── database/
-│   └── dominio_db.py     # conexão SQL Anywhere + consultas
-├── dicionario_id/        # inteligência de idAtividade (1-43)
-│   ├── segment_rules.py  # dicionário 
-│ 
+│   ├── db_schema.py            # Criação e atualização do SQLite
+│   └── dominio_db.py           # Conexão e query ao Domínio (SQL Anywhere)
+├── dicionario_id/
+│   └── segment_rules.py        # Mapas de segmentação de atividade
+├── json/
+│   ├── 202504/                 # Payloads salvos por competência
+│   ├── 202505/
+│   └── exemplos/
+├── testes/
+│   ├── consulta_vigencia.py    # Scripts de teste (vigência, DB, payload)
+│   ├── teste.py
+│   └── teste_banco.py
 ├── utils/
-│   ├── json_builder.py   # gera payload fiscal
-│   ├── save_json.py      # persiste JSON
-│   └── uploader_serpro.py
-├── json/                 # saídas locais (*.json)
-├── .env                  # segredos (NUNCA versione!)
-└── main.py               # script de exemplo
+│   ├── json_builder.py         # Montagem do JSON PGDAS-D
+│   ├── monitorar_serpro.py     # Polling do endpoint /Monitorar
+│   ├── save_json.py            # Salva payload em disco
+│   └── uploader_serpro.py      # Envio ao SERPRO (/Declarar)
+├── .env                        # Variáveis de ambiente
+├── main.py                     # API Flask principal
+├── pgdas.db                    # Banco SQLite local
+└── README.md                   # Este arquivo
 ```
 
 ---
 
-## 3 • Variáveis de ambiente
+## Testes
 
-| Chave                                                          | Descrição                                                   |
-|----------------------------------------------------------------|-------------------------------------------------------------|
-| **Banco**                                                      |                                                             |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`          | Acesso SQL Anywhere (Domínio)                               |
-| **SERPRO**                                                     |                                                             |
-| `URL_BASE`                                                     | Ex.: `https://apicenter.estaleiro.serpro.gov.br/.../PGDASD` |
-| `API_KEY_SERPRO`                                               | Chave da aplicação                                          |
-| `CNPJ_CONT`                                                    | CNPJ do escritório/contador (autor & contratante)           |
-| **Certificado mTLS**                                           |                                                             |
-| `CAMINHO_CERTIFICADO`, `NOME_CERTIFICADO`, `SENHA_CERTIFICADO` |                                                             |
-| **OAuth**                                                      |                                                             |
-| `CONSUMER_KEY`, `CONSUMER_SECRET`, `URL_AUTENTICACAO`          |                                                             |
+Os scripts em `testes/` cobrem:
 
-> Coloque tudo em **`.env`** e mantenha-o fora do controle de versão.
+* **Conexão e consulta** ao banco Domínio (`teste_banco.py`).
+* **Geração de payload** e verificação de campos (`teste.py`).
+* **Validação de vigência** (`consulta_vigencia.py`).
 
----
-
-## 4 • Instalação
+Execute diretamente:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate              # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env                   # edite com suas chaves
+python testes/teste.py
+python testes/teste_banco.py
+python testes/consulta_vigencia.py
 ```
 
 ---
 
+## Contribuição
 
-* Gera o payload, grava em `json/202505/` e faz **simulação**
-  (`indicadorTransmissao=False`, `indicadorComparacao=True`).
-* Ajuste em `json_builder.py` se quiser transmitir de fato.
-
----
-
-## 6 • Boas práticas de segurança
-
-* Nenhum segredo é armazenado em código fonte; tudo via `.env`.
-* Certificado *.pfx* é convertido para DER em tempo de execução (arquivo temporário).
-* Tokens OAuth são armazenados apenas em memória e renovados automaticamente.
-* **Nunca envie** `.env`, `.pfx` ou logs de payload para repositórios públicos.
+1. Fork este repositório.
+2. Crie uma branch feature/xyz.
+3. Faça commits claros.
+4. Abra um Pull Request descrevendo suas alterações.
 
 ---
 
-## 7 • Roadmap / IDEIAS
+## Autor
 
-* Implementar `buscar_folha()` para preencher *folha de salário*.
-* Incluir rotinas de **monitoramento** (`/Monitorar`) para acompanhar o status após envio.
-* Empacotar como *CLI* (`pgdas-cli declara --cnpj ... --pa ...`).
+**Renata Boppre Scharf**
 
----
+```
+

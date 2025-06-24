@@ -91,7 +91,7 @@ def montar_json(rows: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         raise ValueError("Lista de registros vazia")
 
     pa = _pa_from_date(_as_date(rows[0]["data_sim"]))
-    cnpj_matriz = rows[0]["cgce_emp"]
+    cnpj_matriz = next((r["cgce_emp"] for r in rows if r["cgce_emp"].endswith("0001")), rows[0]["cgce_emp"])
     receita_int, receita_ext = _totais_mi_mx(rows)
 
     declaracao = {
@@ -111,8 +111,8 @@ def montar_json(rows: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     payload = {
         "cnpjCompleto": cnpj_matriz,
         "pa": pa,
-        "indicadorTransmissao": False,
-        "indicadorComparacao": True,
+        "indicadorTransmissao": False,      # APÓS TESTES ALTERAR PARA TRUE, QUANDO FOR TRANSMITIR DE VERDADE.
+        "indicadorComparacao": False,
         "declaracao": declaracao,
         "valoresParaComparacao": []
     }
@@ -121,10 +121,14 @@ def montar_json(rows: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     mapa_estab: dict[int, dict[str, Any]] = {}
 
     for r in rows:
+        print(
+            f"PROCESSANDO: codi_emp={r['codi_emp']} cnpj={r['cgce_emp']} anexo={r['anexo']} secao={r['secao']} tabela={r['tabela']} basen={r['basen']}")
         anexo, secao, tabela = r["anexo"], r["secao"], r["tabela"]
         if (anexo, secao, tabela) == (0, 0, 0):
             continue
         basen = float(r["basen"] or 0)
+        if basen <= 0.0:
+            continue
 
         cfg = SEGMENT_RULES[(anexo, secao, tabela)]
         ida, quali = cfg["id"], cfg["quali"]
@@ -133,23 +137,33 @@ def montar_json(rows: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
             r["codi_emp"],
             {"cnpjCompleto": r["cgce_emp"], "atividades": []}
         )
+        print(set((r['codi_emp'], r['cgce_emp']) for r in rows))
 
         for atv in est["atividades"]:
             if atv["idAtividade"] == ida:
+                # Cria uma nova receita para cada linha do banco
+                receita = {"valor": basen}
+                if quali:
+                    receita["qualificacoesTributarias"] = [
+                        {"codigoTributo": k, "id": v} for k, v in quali.items()
+                    ]
+                atv["receitasAtividade"].append(receita)
+                # Atualiza o valor total da atividade
                 atv["valorAtividade"] += basen
-                atv["receitasAtividade"][0]["valor"] += basen
                 break
         else:
             nova = {
                 "idAtividade": ida,
                 "valorAtividade": basen,
-                "receitasAtividade": [{"valor": basen}],
+                "receitasAtividade": [{
+                    "valor": basen,
+                    **({"qualificacoesTributarias": [
+                        {"codigoTributo": k, "id": v} for k, v in quali.items()
+                    ]} if quali else {})
+                }]
             }
-            if quali:
-                nova["receitasAtividade"][0]["qualificacoesTributarias"] = [
-                    {"codigoTributo": k, "id": v} for k, v in quali.items()
-                ]
             est["atividades"].append(nova)
 
     declaracao["estabelecimentos"] = list(mapa_estab.values())
+    print("mapa_estab final:", mapa_estab)
     return _clean(payload)
