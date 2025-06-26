@@ -1,0 +1,81 @@
+{
+  "cnpjCompleto": "75767707000127",
+  "pa": 202505,
+  "indicadorTransmissao": false,
+  "indicadorComparacao": false,
+  "declaracao": {
+    "tipoDeclaracao": 1,
+    "receitaPaCompetenciaInterno": 155749.43,
+    "receitaPaCompetenciaExterno": 0.0,
+    "estabelecimentos": [
+      {
+        "cnpjCompleto": "75767707000127",
+        "atividades": [
+          {
+            "idAtividade": 1,
+            "valorAtividade": 100025.84,
+            "receitasAtividade": [
+              {
+                "valor": 100025.84
+              }
+            ]
+          },
+          {
+            "idAtividade": 2,
+            "valorAtividade": 54629.11,
+            "receitasAtividade": [
+              {
+                "valor": 43509.61,
+                "qualificacoesTributarias": [
+                  {
+                    "codigoTributo": "1007",
+                    "id": 8
+                  }
+                ]
+              },
+              {
+                "valor": 9953.6,
+                "qualificacoesTributarias": [
+                  {
+                    "codigoTributo": "1007",
+                    "id": 8
+                  },
+                  {
+                    "codigoTributo": "1005",
+                    "id": 9
+                  },
+                  {
+                    "codigoTributo": "1004",
+                    "id": 9
+                  }
+                ]
+              },
+              {
+                "valor": 1165.9,
+                "qualificacoesTributarias": [
+                  {
+                    "codigoTributo": "1005",
+                    "id": 9
+                  },
+                  {
+                    "codigoTributo": "1004",
+                    "id": 9
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "idAtividade": 4,
+            "valorAtividade": 1094.48,
+            "receitasAtividade": [
+              {
+                "valor": 1094.48
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -85,7 +85,8 @@ def _clean(obj: Any) -> Any:
 # ---------------------------------------------------------------------------
 # montar JSON PGDAS-D
 # ---------------------------------------------------------------------------
-def montar_json(rows: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+#  *************ARRUMAR PARA RECEBER SEM MOVIMENTO TAMBÉM ************************
+def montar_json(rows: Iterable[Dict[str, Any]], tipo_declaracao: int = 1) -> Dict[str, Any]:
     rows = list(rows)
     if not rows:
         raise ValueError("Lista de registros vazia")
@@ -95,7 +96,7 @@ def montar_json(rows: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     receita_int, receita_ext = _totais_mi_mx(rows)
 
     declaracao = {
-        "tipoDeclaracao": 1,
+        "tipoDeclaracao": tipo_declaracao,
         "receitaPaCompetenciaInterno": receita_int,
         "receitaPaCompetenciaExterno": receita_ext,
         "receitaPaCaixaInterno": None,

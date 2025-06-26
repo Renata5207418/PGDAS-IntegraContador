@@ -1,0 +1,50 @@
+{
+  "cnpjCompleto": "10662777000175",
+  "pa": 202505,
+  "indicadorTransmissao": false,
+  "indicadorComparacao": false,
+  "declaracao": {
+    "tipoDeclaracao": 1,
+    "receitaPaCompetenciaInterno": 15405.0,
+    "receitaPaCompetenciaExterno": 0.0,
+    "estabelecimentos": [
+      {
+        "cnpjCompleto": "10662777000175",
+        "atividades": [
+          {
+            "idAtividade": 2,
+            "valorAtividade": 350.0,
+            "receitasAtividade": [
+              {
+                "valor": 350.0,
+                "qualificacoesTributarias": [
+                  {
+                    "codigoTributo": "1007",
+                    "id": 8
+                  },
+                  {
+                    "codigoTributo": "1005",
+                    "id": 9
+                  },
+                  {
+                    "codigoTributo": "1004",
+                    "id": 9
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "idAtividade": 14,
+            "valorAtividade": 15055.0,
+            "receitasAtividade": [
+              {
+                "valor": 15055.0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

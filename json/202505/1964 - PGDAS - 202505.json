@@ -1,0 +1,50 @@
+{
+  "cnpjCompleto": "36672265000183",
+  "pa": 202505,
+  "indicadorTransmissao": false,
+  "indicadorComparacao": false,
+  "declaracao": {
+    "tipoDeclaracao": 1,
+    "receitaPaCompetenciaInterno": 41979.12,
+    "receitaPaCompetenciaExterno": 0.0,
+    "estabelecimentos": [
+      {
+        "cnpjCompleto": "36672265000183",
+        "atividades": [
+          {
+            "idAtividade": 1,
+            "valorAtividade": 12104.2,
+            "receitasAtividade": [
+              {
+                "valor": 12104.2
+              }
+            ]
+          },
+          {
+            "idAtividade": 14,
+            "valorAtividade": 18114.19,
+            "receitasAtividade": [
+              {
+                "valor": 18114.19
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "cnpjCompleto": "36672265000264",
+        "atividades": [
+          {
+            "idAtividade": 14,
+            "valorAtividade": 11760.73,
+            "receitasAtividade": [
+              {
+                "valor": 11760.73
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

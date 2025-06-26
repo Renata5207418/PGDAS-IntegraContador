@@ -1,0 +1,27 @@
+{
+  "cnpjCompleto": "08909630000195",
+  "pa": 202505,
+  "indicadorTransmissao": false,
+  "indicadorComparacao": false,
+  "declaracao": {
+    "tipoDeclaracao": 1,
+    "receitaPaCompetenciaInterno": 134185.39,
+    "receitaPaCompetenciaExterno": 0.0,
+    "estabelecimentos": [
+      {
+        "cnpjCompleto": "08909630000195",
+        "atividades": [
+          {
+            "idAtividade": 14,
+            "valorAtividade": 134185.39,
+            "receitasAtividade": [
+              {
+                "valor": 134185.39
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

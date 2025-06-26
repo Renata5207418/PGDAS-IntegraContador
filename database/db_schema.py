@@ -1,111 +1,119 @@
-import sqlite3
+from pymongo import MongoClient, ASCENDING
+from dotenv import load_dotenv
+from typing import Any, Dict
+from datetime import datetime
+import os
 import json
 
-DB_PATH = "pgdas.db"
+
+load_dotenv()
 
 
-def init_db(path: str = DB_PATH):
-    """Cria a tabela única se não existir."""
-    conn = sqlite3.connect(path)
-    cur = conn.cursor()
-    cur.execute("PRAGMA foreign_keys = ON;")
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS transmissao_pgd (
-      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-      cnpj                 TEXT    NOT NULL,
-      pa                   INTEGER NOT NULL,
-      status               TEXT    NOT NULL,            -- PENDENTE, SUCESSO, FALHA
-      criado_em            TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-      payload_json         TEXT    NOT NULL,            -- JSON enviado
-      response_json        TEXT,                       -- JSON recebido completo
-      guia_pdf_base64      TEXT,                       -- base64 do PDF, se houver
-      valores_devidos_json TEXT,                       -- JSON array de valoresDevidos
-      error_msg            TEXT                        -- msg de erro, se falha
-    );
-    """)
-    conn.commit()
-    conn.close()
+# ---------------------------------------------------------------------
+# conexão / inicialização
+# ---------------------------------------------------------------------
+MONGODB_URI = os.environ["MONGODB_URI"]
+MONGO_DB = os.environ.get("MONGO_DB", "pgdas")
+COLLECTION = os.environ.get("COLLECTION", "transmissao_pgd")
+
+_client = MongoClient(MONGODB_URI)
+_db = _client[MONGO_DB]
+_collection = _db[COLLECTION]
 
 
-def insert_transmission(cnpj: str, pa: int, payload: dict) -> int:
-    """Insere uma linha PENDENTE e retorna o ID."""
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-      INSERT INTO transmissao_pgd
-        (cnpj, pa, status, payload_json)
-      VALUES (?, ?, 'PENDENTE', ?)
-    """, (cnpj, pa, json.dumps(payload, ensure_ascii=False)))
-    idx = cur.lastrowid
-    conn.commit()
-    conn.close()
-    return idx
+def init_db() -> None:
+    """
+    Garante a existência da coleção e índices básicos.
+    """
+    _collection.create_index([("cnpj", ASCENDING), ("pa", ASCENDING), ("tipoDeclaracao", ASCENDING)], unique=True)
+    _collection.create_index("status")
 
 
-def update_success(idx: int, resp: dict):
-    """Marca SUCESSO, salva JSON bruto, guia e valoresDevidos."""
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
+# ---------------------------------------------------------------------
+# helpers internos
+# ---------------------------------------------------------------------
+def _make_cnpj_pa_id(cnpj: str, pa: int, tipo: int) -> str:
+    return f"{cnpj}_{pa}_{tipo}"
 
-    # 1) string completa da resposta
-    resp_json_str = json.dumps(resp, ensure_ascii=False)
 
-    # 2) extrai onde o SERPRO coloca os valoresDevidos:
-    interno = {}
+def _now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _to_json_str(obj: Any) -> str | None:
+    if obj is None:
+        return None
+    return json.dumps(obj, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------
+# API pública — idêntica à versão SQLite
+# ---------------------------------------------------------------------
+def insert_transmission(cnpj: str, pa: int, tipo: int, payload: Dict[str, Any]) -> str:
+    """
+    Insere documento PENDENTE e devolve o _id como string.
+    """
+    _id = _make_cnpj_pa_id(cnpj, pa, tipo)
+    doc = {
+        "_id": _id,
+        "cnpj": cnpj,
+        "pa": pa,
+        "tipoDeclaracao": tipo,
+        "status": "PENDENTE",
+        "criado_em": _now_iso(),
+        "payload_json": payload,
+    }
+    _collection.insert_one(doc)
+    return _id
+
+
+def update_success(cnpj: str, pa: int, tipo: int, resp: Dict[str, Any]) -> None:
+    """
+    Marca SUCESSO, grava resposta, guia (PDF base64) e valoresDevidos.
+    """
+    _id = _make_cnpj_pa_id(cnpj, pa, tipo)
+    # ------------ extrai partes internas iguais ao código SQLite ----------
+    interno: Dict[str, Any] = {}
     raw = None
 
-    # cenário A: envelope de enviar() → resp["body"]["dados"]
     if isinstance(resp.get("body"), dict):
         raw = resp["body"].get("dados")
 
-    # cenário B: monitorar_pedido já retorna o JSON puro → resp["dados"]
     if raw is None and isinstance(resp.get("dados"), str):
         raw = resp["dados"]
 
-    # parseia o JSON interno, se existir
     if isinstance(raw, str):
         try:
             interno = json.loads(raw)
         except json.JSONDecodeError:
             interno = {}
 
-    # 3) pega o array de valoresDevidos (ou lista vazia)
     valores = interno.get("valoresDevidos", [])
+    guia_b64 = interno.get("declaracao") if isinstance(interno.get("declaracao"), str) else None
+    # ----------------------------------------------------------------------
 
-    # 4) pega o PDF em Base64 (ou None)
-    guia = interno.get("declaracao")
-    guia_b64 = guia if isinstance(guia, str) else None
-
-    # 5) grava no SQLite
-    cur.execute("""
-      UPDATE transmissao_pgd
-      SET status               = 'SUCESSO',
-          response_json        = ?,
-          guia_pdf_base64      = ?,
-          valores_devidos_json = ?
-      WHERE id = ?
-    """, (
-      resp_json_str,
-      guia_b64,
-      json.dumps(valores, ensure_ascii=False),
-      idx
-    ))
-
-    conn.commit()
-    conn.close()
+    _collection.update_one(
+        {"_id": _id},
+        {"$set": {
+            "status": "SUCESSO",
+            "response_json": resp,
+            "guia_pdf_base64": guia_b64,
+            "valores_devidos_json": valores
+        }}
+    )
 
 
-def update_failure(idx: int, resp: dict | None = None, error: str | None = None):
-    """Marca FALHA, salva JSON bruto (se houver) e a mensagem de erro."""
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    resp_json = json.dumps(resp, ensure_ascii=False) if resp is not None else None
-    cur.execute("""
-      UPDATE transmissao_pgd
-      SET status        = 'FALHA',
-          response_json = ?,
-          error_msg     = ?
-      WHERE id = ?
-    """, (resp_json, error, idx))
-    conn.commit()
-    conn.close()
+def update_failure(cnpj: str, pa: int, tipo: int, resp: Dict[str, Any] | None = None, error: str | None = None) -> None:
+    """
+    Marca FALHA, salva resposta bruta (se houver) e msg de erro.
+    """
+    _id = _make_cnpj_pa_id(cnpj, pa, tipo)
+    _collection.update_one(
+        {"_id": _id},
+        {"$set": {
+            "status": "FALHA",
+            "response_json": resp,
+            "error_msg": error,
+            "atualizado_em": _now_iso()
+        }}
+    )

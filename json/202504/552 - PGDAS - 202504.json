@@ -1,0 +1,27 @@
+{
+  "cnpjCompleto": "18277532000136",
+  "pa": 202504,
+  "indicadorTransmissao": false,
+  "indicadorComparacao": false,
+  "declaracao": {
+    "tipoDeclaracao": 1,
+    "receitaPaCompetenciaInterno": 46480.88,
+    "receitaPaCompetenciaExterno": 0.0,
+    "estabelecimentos": [
+      {
+        "cnpjCompleto": "18277532000136",
+        "atividades": [
+          {
+            "idAtividade": 14,
+            "valorAtividade": 46480.88,
+            "receitasAtividade": [
+              {
+                "valor": 46480.88
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
