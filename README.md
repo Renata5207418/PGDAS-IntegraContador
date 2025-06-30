@@ -1,244 +1,181 @@
 # PgDas
 
-Automatiza a geração e transmissão de declarações PGDAS-D ao SERPRO, com suporte a OAuth2 + mTLS, persistência em
-SQLite e monitoramento de pedidos.
+Automatiza a geração e transmissão de declarações **PGDAS-D** ao SERPRO,
+com suporte a OAuth2 + mTLS, persistência em **MongoDB** e monitoramento
+assíncrono de pedidos.
 
 ---
 
 ## Índice
-
-- [Descrição](#descrição)  
-- [Funcionalidades](#funcionalidades)  
-- [Tecnologias](#tecnologias)  
-- [Pré-requisitos](#pré-requisitos)  
-- [Instalação](#instalação)  
-- [Configuração](#configuração)  
-- [Uso](#uso)  
-- [Estrutura de Diretórios](#estrutura-de-diretórios)  
-- [Testes](#testes)  
-- [Contribuição](#contribuição)  
-- [Licença](#licença)  
-- [Autor](#autor)  
+- [Descrição](#descrição)
+- [Funcionalidades](#funcionalidades)
+- [Tecnologias](#tecnologias)
+- [Pré-requisitos](#pré-requisitos)
+- [Instalação](#instalação)
+- [Configuração](#configuração)
+- [Uso](#uso)
+- [Estrutura de Diretórios](#estrutura-de-diretórios)
+- [Testes](#testes)
+- [Contribuição](#contribuição)
+- [Licença](#licença)
+- [Autor](#autor)
 
 ---
 
 ## Descrição
 
-O **PgDas** é um utilitário em Python que:
+O **PgDas** faz:
 
-1. Conecta ao banco Domínio (SQL Anywhere) para extrair dados de receita do Simples Nacional.  
-2. Constrói o JSON de declaração conforme especificação PGDAS-D.  
-3. Salva localmente o payload em `json/AAAAMM/` para auditoria.  
-4. Transmite ao SERPRO via OAuth 2.0 + mTLS e API key.  
-5. Monitora o pedido de transmissão até conclusão.  
-6. Persiste histórico e resultados (sucesso/falha) em banco SQLite (`pgdas.db`).  
+1. Conecta ao **Domínio/SQL Anywhere** para extrair dados de receita.  
+2. Constrói o JSON conforme especificação PGDAS-D.  
+3. Salva o payload em `json/AAAAMM/` para auditoria.  
+4. Transmite ao SERPRO via **OAuth 2 + mTLS + API-Key**.  
+5. Monitora o pedido até `codigoStatus = CONCLUIDO`.  
+6. Persiste histórico (sucesso/falha) em **MongoDB**.
 
 ---
 
 ## Funcionalidades
 
-- 💼 **Autenticação**: OAuth2 + mTLS (PKCS#12) com cache de token.  
-- 📊 **Construção de Payload**: agrupa receitas por estabelecimento e atividade, calcula internos × externos.  
-- 📁 **Salvar JSON**: gera arquivos em `json/AAAAMM/`, com opção “pretty” para debug.  
-- 📡 **Transmissão**: envia e monitora via endpoints `/Declarar` e `/Monitorar`.  
-- 🗄️ **Banco Local**: SQLite para rastrear status, payload e resposta (incluindo PDF base64).  
-- 🔄 **API REST**: rota Flask `/transmitir-pgdas` para integração com outros sistemas.  
+- 🔐 **Autenticação**: cache de `access_token` e `jwt_token`.
+- 🏗️ **Builder**: agrupa receitas, calcula MI × MX, remove campos vazios.
+- 💾 **Persistência**: payload + resposta (incluindo PDF Base-64) em Mongo.
+- 📡 **Transmissão**: re-tentativa automática para 5xx, polling de monitoramento.
+- 🛠️ **API Flask** `POST /transmitir-pgdas` pronta para integração.
 
 ---
 
 ## Tecnologias
 
-- Python 3.10+  
-- Flask  
-- sqlite3  
-- requests, requests-pkcs12  
-- python-dotenv  
-- cryptography  
-- sqlanydb  
-- typing, pathlib, logging  
+| Camada  | Stack                                         |
+|---------|-----------------------------------------------|
+| Core    | Python 3.10+, `typing`, `logging`             |
+| Web     | Flask                                         |
+| SERPRO  | `requests`, `requests-pkcs12`, `cryptography` |
+| Banco   | **MongoDB** (`pymongo`)                       |
+| Domínio | `sqlanydb`                                    |
+| Outros  | `python-dotenv`, `pathlib`                    |
 
 ---
 
 ## Pré-requisitos
 
-- Python 3.10 ou superior  
-- `pip`  
-- (Opcional) Virtualenv  
+* Python 3.10+  
+* MongoDB em execução (local ou Atlas)  
+* Acesso ao banco Domínio (SQL Anywhere)  
+* Certificado PFX + credenciais da Loja SERPRO
 
 ---
 
 ## Instalação
 
-1. Clone o repositório:  
-   ```bash
-   git clone https://…/PgDas.git
-   cd PgDas
-````
+```bash
+git clone https://…/PgDas.git
+cd PgDas
+python -m venv .venv && source .venv/bin/activate   # Linux/mac
+# .venv\Scripts\activate  (Windows)
+pip install -r requirements.txt
+Nenhum passo extra de banco é necessário — as coleções Mongo são criadas
+automaticamente na primeira execução.
 
-2. Crie e ative um virtualenv (opcional):
+Configuração
+Copie .env.example → .env e preencha:
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate    # Linux/macOS
-   .venv\Scripts\activate       # Windows
-   ```
-3. Instale dependências:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Inicialize o banco SQLite:
-
-   ```bash
-   # Será executado automaticamente ao iniciar o app
-   python main.py
-   ```
-
----
-
-## Configuração
-
-Copie o arquivo de exemplo `.env.example` para `.env` e preencha:
-
-```dotenv
-# Certificado PKCS#12 (mTLS)
+dotenv
+Copiar
+Editar
+# === Certificado mTLS ===
 CAMINHO_CERTIFICADO=/caminho/para/cert
 NOME_CERTIFICADO=meu_cert.pfx
 SENHA_CERTIFICADO=senha_do_pfx
 
-# OAuth2
-CONSUMER_KEY=seu_consumer_key
-CONSUMER_SECRET=seu_consumer_secret
+# === OAuth2 Loja SERPRO ===
+CONSUMER_KEY=ck_xxx
+CONSUMER_SECRET=cs_xxx
 URL_AUTENTICACAO=https://gateway.apiserpro.gov.br/token
 
-# Endpoints SERPRO
+# === Endpoint Integra Contador ===
 URL_BASE=https://gateway.apiserpro.gov.br/integra-sn
-API_KEY_SERPRO=sua_api_key
+API_KEY_SERPRO=api_key_xxx
 CNPJ_CONT=00000000000191
+SERPRO_READ_TIMEOUT=60   # opcional
 
-# Domínio (SQL Anywhere)
+# === MongoDB ===
+MONGO_URI=mongodb://localhost:27017/pgdas
+
+# === Domínio SQLAnywhere ===
 DB_HOST=...
 DB_PORT=2638
 DB_NAME=...
 DB_USER=...
 DB_PASS=...
 
-# Flask
-PORT=5000
-```
+# === Flask ===
+PORT=6200
+Dica: ao ir para produção, troque indicadorTransmissao para
+True em json_builder.py ou envie esse flag pelo front-end.
 
-> **Observação:** reveja `indicadorTransmissao` e `indicadorComparacao` em `utils/json_builder.py` antes de ir para produção.
-
----
-
-## Uso
-
-### Via API REST
-
-Faça um **POST** para `/transmitir-pgdas`:
-
-```bash
-curl -X POST http://localhost:5000/transmitir-pgdas \
+Uso
+Via API REST
+bash
+Copiar
+Editar
+curl -X POST http://localhost:6200/transmitir-pgdas \
   -H "Content-Type: application/json" \
   -d '{
         "pa": 202505,
-        "cnpjs": ["11111111000191","22222222000199"]
+        "tipoDeclaracao": 1,
+        "cnpjs": ["11111111000191"]
       }'
-```
+Resposta:
 
-**Resposta JSON**:
-
-```json
+json
+Copiar
+Editar
 {
   "pa": 202505,
   "resultados": [
     {
       "cnpj": "11111111000191",
       "status": "SUCESSO",
-      "valoresDevidos": [ ... ]
-    },
-    {
-      "cnpj": "22222222000199",
-      "status": "FALHA",
-      "erro": "mensagem de erro…"
+      "recibo": "123.456.789.000001",
+      "pdf_b64": "JVBERi0xLjQKJ...."
     }
-  ]
+  ],
+  "tipoDeclaracao": 1
 }
-```
-
-### Script direto
-
-```bash
-python main.py
-```
-
-A aplicação roda em `http://0.0.0.0:<PORT>`.
-
----
-
-## Estrutura de Diretórios
-
-```
+Execução direta
+bash
+Copiar
+Editar
+python main.py        # sobe o servidor Flask em 0.0.0.0:6200
+Estrutura de Diretórios
+bash
+Copiar
+Editar
 PgDas/
-├── .venv/                      # Virtualenv (opcional)
-├── auth/
-│   └── token_auth.py           # OAuth2 + mTLS (PKCS#12)
-├── database/
-│   ├── db_schema.py            # Criação e atualização do SQLite
-│   └── dominio_db.py           # Conexão e query ao Domínio (SQL Anywhere)
-├── dicionario_id/
-│   └── segment_rules.py        # Mapas de segmentação de atividade
-├── json/
-│   ├── 202504/                 # Payloads salvos por competência
-│   ├── 202505/
-│   └── exemplos/
-├── testes/
-│   ├── consulta_vigencia.py    # Scripts de teste (vigência, DB, payload)
-│   ├── teste.py
-│   └── teste_banco.py
-├── utils/
-│   ├── json_builder.py         # Montagem do JSON PGDAS-D
-│   ├── monitorar_serpro.py     # Polling do endpoint /Monitorar
-│   ├── save_json.py            # Salva payload em disco
-│   └── uploader_serpro.py      # Envio ao SERPRO (/Declarar)
-├── .env                        # Variáveis de ambiente
-├── main.py                     # API Flask principal
-├── pgdas.db                    # Banco SQLite local
-└── README.md                   # Este arquivo
-```
-
----
-
-## Testes
-
-Os scripts em `testes/` cobrem:
-
-* **Conexão e consulta** ao banco Domínio (`teste_banco.py`).
-* **Geração de payload** e verificação de campos (`teste.py`).
-* **Validação de vigência** (`consulta_vigencia.py`).
-
-Execute diretamente:
-
-```bash
-python testes/teste.py
-python testes/teste_banco.py
+├── auth/                  # OAuth2 + mTLS
+├── database/              # Mongo + Domínio
+├── utils/                 # builder, uploader, monitor etc.
+├── json/AAAAMM/           # payloads salvos
+├── testes/                # scripts de teste
+├── main.py                # API Flask
+└── .env / README.md
+Testes
+bash
+Copiar
+Editar
+python testes/teste_banco.py     # conexão Domínio
+python testes/teste.py           # builder + validação
 python testes/consulta_vigencia.py
-```
+Contribuição
+Fork
 
----
+git checkout -b feature/sua-feature
 
-## Contribuição
+Commits claros
 
-1. Fork este repositório.
-2. Crie uma branch feature/xyz.
-3. Faça commits claros.
-4. Abra um Pull Request descrevendo suas alterações.
+Pull Request descrevendo a mudança
 
----
-
-## Autor
-
-**Renata Boppre Scharf**
-
-```
-
+Autor
+Renata Boppre Scharf

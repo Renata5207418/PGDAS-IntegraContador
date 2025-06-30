@@ -85,16 +85,48 @@ def _clean(obj: Any) -> Any:
 # ---------------------------------------------------------------------------
 # montar JSON PGDAS-D
 # ---------------------------------------------------------------------------
-#  *************ARRUMAR PARA RECEBER SEM MOVIMENTO TAMBÉM ************************
 def montar_json(rows: Iterable[Dict[str, Any]], tipo_declaracao: int = 1) -> Dict[str, Any]:
     rows = list(rows)
-    if not rows:
-        raise ValueError("Lista de registros vazia")
+
+    # SE NÃO EXISTIR MOVIMENTO
+    movimento = any(
+        float(r["basen"] or 0) > 0 and (r["anexo"], r["secao"], r["tabela"]) != (0, 0, 0)
+        for r in rows
+    )
+    sem_mov = (not rows) or (not movimento)
+    if sem_mov and not rows:
+        raise ValueError("Sem movimento, mas rows vazio: precisa de pelo menos 1 registro para obter PA e CNPJ")
 
     pa = _pa_from_date(_as_date(rows[0]["data_sim"]))
     cnpj_matriz = next((r["cgce_emp"] for r in rows if r["cgce_emp"].endswith("0001")), rows[0]["cgce_emp"])
-    receita_int, receita_ext = _totais_mi_mx(rows)
 
+    if not movimento:
+        # ===== SEM MOVIMENTO =====
+        estabelecimentos = [
+            {"cnpjCompleto": r["cgce_emp"]}
+            for r in rows
+            if (r["anexo"], r["secao"], r["tabela"]) == (0, 0, 0)
+        ]
+
+        # se não achar nenhuma linha “0,0,0”, inclui pelo menos a matriz
+        if not estabelecimentos:
+            estabelecimentos = [{"cnpjCompleto": cnpj_matriz}]
+        declaracao = {
+            "tipoDeclaracao": tipo_declaracao,
+            "receitaPaCompetenciaInterno": 0.00,
+            "receitaPaCompetenciaExterno": 0.00,
+            "estabelecimentos": estabelecimentos
+        }
+        payload = {
+            "cnpjCompleto": cnpj_matriz,
+            "pa": pa,
+            "indicadorTransmissao": False,     # APÓS TESTES ALTERAR PARA TRUE, QUANDO FOR TRANSMITIR DE VERDADE.
+            "indicadorComparacao": False,
+            "declaracao": declaracao
+        }
+        return _clean(payload)
+
+    receita_int, receita_ext = _totais_mi_mx(rows)
     declaracao = {
         "tipoDeclaracao": tipo_declaracao,
         "receitaPaCompetenciaInterno": receita_int,
