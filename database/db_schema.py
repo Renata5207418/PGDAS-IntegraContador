@@ -1,4 +1,3 @@
-from pymongo.errors import DuplicateKeyError
 from pymongo import MongoClient, ASCENDING
 from dotenv import load_dotenv
 from typing import Any, Dict
@@ -16,18 +15,32 @@ load_dotenv()
 MONGODB_URI = os.environ["MONGODB_URI"]
 MONGO_DB = os.environ.get("MONGO_DB", "pgdas")
 COLLECTION = os.environ.get("COLLECTION", "transmissao_pgd")
+COLLECTION_DAS = os.environ.get("COLLECTION_DAS", "transmissao_das")
+
 
 _client = MongoClient(MONGODB_URI)
 _db = _client[MONGO_DB]
+
+# coleção PGDAS
 _collection = _db[COLLECTION]
+# coleção DAS
+_das_collection = _db[COLLECTION_DAS]
 
 
 def init_db() -> None:
     """
     Garante a existência da coleção e índices básicos.
     """
+    # índices PGDAS
     _collection.create_index([("cnpj", ASCENDING), ("pa", ASCENDING), ("tipoDeclaracao", ASCENDING)], unique=True)
     _collection.create_index("status")
+
+    # índices DAS
+    _das_collection.create_index(
+        [("cnpj", ASCENDING), ("pa", ASCENDING), ("dataConsolidacao", ASCENDING)],
+        unique=True
+    )
+    _das_collection.create_index("status")
 
 
 # ---------------------------------------------------------------------
@@ -42,7 +55,7 @@ def _now_iso() -> str:
 
 
 # ---------------------------------------------------------------------
-# API pública — idêntica à versão SQLite
+# PGDAS
 # ---------------------------------------------------------------------
 def insert_transmission(cnpj: str, pa: int, tipo: int, payload: Dict[str, Any]) -> str:
     """
@@ -116,6 +129,64 @@ def update_failure(cnpj: str, pa: int, tipo: int, resp: Dict[str, Any] | None = 
     """
     _id = _make_cnpj_pa_id(cnpj, pa, tipo)
     _collection.update_one(
+        {"_id": _id},
+        {"$set": {
+            "status": "FALHA",
+            "response_json": resp,
+            "error_msg": error,
+            "atualizado_em": _now_iso()
+        }}
+    )
+
+
+# ---------------------------------------------------------------------
+#  DAS
+# ---------------------------------------------------------------------
+def insert_das_transmission(cnpj: str, pa: int, data_consolidacao: str, payload: Dict[str, Any]) -> str:
+    _id = f"{cnpj}_{pa}_{data_consolidacao}"
+    doc = {
+        "_id": _id,
+        "cnpj": cnpj,
+        "pa": pa,
+        "dataConsolidacao": data_consolidacao,
+        "status": "PENDENTE",
+        "criado_em": _now_iso(),
+        "payload_json": payload,
+    }
+    _das_collection.insert_one(doc)
+    return _id
+
+
+def update_das_success(
+    cnpj: str,
+    pa: int,
+    data_consolidacao: str,
+    resp: Dict[str, Any],
+    detalhamento: Any,
+    das_pdf_b64: str | None
+) -> None:
+    _id = f"{cnpj}_{pa}_{data_consolidacao}"
+    _das_collection.update_one(
+        {"_id": _id},
+        {"$set": {
+            "status": "SUCESSO",
+            "response_json": resp,
+            "das_pdf_base64": das_pdf_b64,
+            "detalhamento_json": detalhamento,
+            "atualizado_em": _now_iso()
+        }}
+    )
+
+
+def update_das_failure(
+    cnpj: str,
+    pa: int,
+    data_consolidacao: str,
+    resp: Dict[str, Any] | None = None,
+    error: str | None = None
+) -> None:
+    _id = f"{cnpj}_{pa}_{data_consolidacao}"
+    _das_collection.update_one(
         {"_id": _id},
         {"$set": {
             "status": "FALHA",

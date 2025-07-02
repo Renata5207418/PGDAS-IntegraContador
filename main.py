@@ -1,10 +1,11 @@
 import os
 import json
 import logging
+from datetime import date, timedelta
 from typing import Any, Dict, List
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
-from database.db_schema import init_db, insert_transmission, update_success, update_failure
+from database.db_schema import init_db, insert_transmission, update_success, update_failure, insert_das_transmission, update_das_success, update_das_failure
 from pymongo.errors import DuplicateKeyError
 from database.dominio_db import buscar_simples
 from utils.json_builder import montar_json
@@ -136,52 +137,6 @@ def transmitir_pgdas():
                 resultados.append(resultado)
                 continue
 
-            # ─── novo bloco: se não for 2xx, trate como erro ──────────────────────
-            if not (200 <= resp.get("status", 0) < 300):
-                resultados.append({
-                    "cnpj": cnpj,
-                    "status": "FALHA",
-                    "erro": "SERPRO devolveu HTTP %s" % resp["status"],
-                    "serpro_body": resp["body"],
-                })
-                update_failure(cnpj, pa, tipo, resp, "HTTP %s" % resp["status"])
-                continue
-
-            # 2.5) Verifica se a ORIGINAL já estava concluída
-            if (tipo == 1 and
-                    resp.get("status") == 200 and
-                    isinstance(resp.get("body"), dict) and
-                    resp["body"].get("codigoStatus") == "CONCLUIDO" and
-                    isinstance(resp["body"].get("dados"), dict) and
-                    resp["body"]["dados"].get("reciboDeclaracao")):
-                resultados.append({
-                    "cnpj": cnpj,
-                    "status": "JA_TRANSMITIDA",
-                    "mensagem": "Declaração ORIGINAL já estava transmitida no PGDAS-D",
-                    "recibo": resp["body"]["dados"]["reciboDeclaracao"],
-                    "pdf_b64": resp["body"]["dados"].get("declaracao")
-                })
-                continue
-            # 3) Grava no Mongo
-            try:
-                insert_transmission(cnpj, pa, tipo, payload)
-            except DuplicateKeyError:
-                resultado = {
-                    "cnpj": cnpj,
-                    "status": "JA_TRANSMITIDA",
-                    "mensagem": (
-                        "Declaração ORIGINAL já transmitida..."
-                        if tipo == 1
-                        else "Declaração RETIFICADORA já existe..."
-                    ),
-                }
-                if resp and isinstance(resp.get("body"), dict):
-                    dados = resp["body"].get("dados") or {}
-                    resultado["recibo"] = dados.get("reciboDeclaracao")
-                    resultado["pdf_b64"] = dados.get("declaracao")
-                resultados.append(resultado)
-                continue
-
             # 4) marca SUCESSO no banco
             update_success(cnpj, pa, tipo, resp)
 
@@ -254,27 +209,48 @@ def gerar_das_route():
     cnpjs = data.get("cnpjs")
     data_consolidacao = data.get("dataConsolidacao")
 
-    # validação mínima
     if not pa or not isinstance(cnpjs, list) or not cnpjs:
         return jsonify(error="JSON deve conter 'pa' e lista não vazia 'cnpjs'"), 400
 
-    resultados = []
+    resultados: List[Dict[str, Any]] = []
+
     for cnpj in cnpjs:
+        # normaliza dataConsolidacao para YYYYMMDD
+        if data_consolidacao:
+            dc = data_consolidacao.replace("-", "")
+        else:
+            dc = (date.today() + timedelta(days=1)).strftime("%Y%m%d")
+
+        # 1) insere registro PENDENTE
+        insert_das_transmission(cnpj, pa, dc, {"cnpj": cnpj, "pa": pa, "dataConsolidacao": dc})
+
         try:
-            # repassa a data (ou None) para a função
+            # 2) chama SERPRO
             resultado = gerar_das_unico(cnpj, pa, data_consolidacao)
             resultados.append(resultado)
-        except Exception as e:
-            resultados.append({
-                "cnpj": cnpj,
-                "status": "FALHA",
-                "erro": str(e)
-            })
 
-    # se quiser ecoar a data usada no retorno, pode incluiu-la:
-    retorno = {"pa": pa, "resultados": resultados}
+            # 3) persiste sucesso ou falha
+            resp = resultado.get("serpro_response")
+            if resultado["status"] == "SUCESSO":
+                update_das_success(
+                    cnpj, pa, dc,
+                    resp,
+                    resultado.get("detalhamento"),
+                    resultado.get("das_pdf_b64")
+                )
+            else:
+                update_das_failure(cnpj, pa, dc, resp, resultado.get("erro"))
+
+        except Exception as e:
+            # falha inesperada
+            msg = str(e)
+            resultados.append({"cnpj": cnpj, "status": "FALHA", "erro": msg})
+            update_das_failure(cnpj, pa, dc, None, msg)
+
+    retorno: Dict[str, Any] = {"pa": pa, "resultados": resultados}
     if data_consolidacao:
         retorno["dataConsolidacao"] = data_consolidacao
+
     return jsonify(retorno), 200
 
 

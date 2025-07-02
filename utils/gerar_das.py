@@ -28,14 +28,15 @@ def gerar_das_unico(cnpj: str, pa: int, data_consolidacao: str | None = None) ->
     # 2) chama o serviço
     resp = _client.enviar("das", payload)
     body = resp.get("body")
+    raw_resp = {"status": resp.get("status"), "body": body}
 
     # 3) se não for JSON, retorna erro bruto
     if not isinstance(body, dict):
-        return {"status": "FALHA", "cnpj": cnpj, "erro": body}
+        return {"status": "FALHA", "cnpj": cnpj, "erro": body, "serpro_response": raw_resp}
 
     # 4) trata HTTP “não 2xx” como falha
     if not (200 <= resp["status"] < 300):
-        return {"status": "FALHA", "cnpj": cnpj, "erro": body}
+        return {"status": "FALHA", "cnpj": cnpj, "erro": body, "serpro_response": raw_resp}
 
     # 5) a partir daqui, HTTP 2xx e body é dict
     raw_dados = body.get("dados")
@@ -47,7 +48,7 @@ def gerar_das_unico(cnpj: str, pa: int, data_consolidacao: str | None = None) ->
             parsed = json.loads(raw_dados)
         except json.JSONDecodeError:
             # volta sucesso, mas sem PDF se não decodificar
-            return {"status": "SUCESSO", "cnpj": cnpj, "das_pdf_b64": None, "detalhamento": None}
+            return {"status": "SUCESSO", "cnpj": cnpj, "das_pdf_b64": None, "detalhamento": None, "serpro_response": raw_resp}
     elif isinstance(raw_dados, (list, dict)):
         parsed = raw_dados
 
@@ -65,6 +66,7 @@ def gerar_das_unico(cnpj: str, pa: int, data_consolidacao: str | None = None) ->
             "cnpj": cnpj,
             "das_pdf_b64": das_obj.get("pdf"),
             "detalhamento": das_obj.get("detalhamento"),
+            "serpro_response": raw_resp
         }
     else:
         # corpo vazio, sem PDF
@@ -73,4 +75,5 @@ def gerar_das_unico(cnpj: str, pa: int, data_consolidacao: str | None = None) ->
             "cnpj": cnpj,
             "das_pdf_b64": None,
             "detalhamento": None,
+            "serpro_response": raw_resp
         }
