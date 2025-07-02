@@ -1,4 +1,4 @@
----
+
 <!-- Badges -->
 [![Python](https://img.shields.io/badge/python-3.10+-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -7,7 +7,6 @@
 #  PGDAS-D
 
 > Automação completa do fluxo PGDAS-D: geração, transmissão e persistência de DAS junto ao SERPRO.
----
 
 ## 📑 Índice
 
@@ -26,7 +25,7 @@
 - [Licença](#licença)  
 - [Autor](#autor)  
 
----
+
 
 ## 📝 Descrição
 
@@ -40,7 +39,7 @@ O **PgDas** realiza todo o fluxo de entrega das obrigações do Simples Nacional
 6. Polling até `codigoStatus = CONCLUIDO`.  
 7. Persiste histórico de respostas (sucesso/falha) em **MongoDB**.
 
----
+
 
 ## 🚀 Funcionalidades
 
@@ -68,7 +67,7 @@ O **PgDas** realiza todo o fluxo de entrega das obrigações do Simples Nacional
   - Salva o PDF em Base64 junto com o histórico.
 
 
----
+
 
 ## 🛠️ Tecnologias
 
@@ -90,7 +89,7 @@ O **PgDas** realiza todo o fluxo de entrega das obrigações do Simples Nacional
 - Acesso ao banco Domínio (SQL Anywhere)  
 - Certificado PFX + credenciais da Loja SERPRO  
 
----
+
 
 ## ⚡ Quick Start
 
@@ -117,7 +116,7 @@ cp .env.example .env
 python main.py
 ````
 
----
+
 
 ## ⚙️ Configuração
 
@@ -156,7 +155,7 @@ PORT=6200
 
 > **Dica:** para enviar o indicadorTransmissao, você pode alterar o valor em `json_builder.py` ou passar esse flag pela API.
 
----
+
 
 ## 📦 Uso
 
@@ -196,7 +195,7 @@ python main.py
 # Servidor rodando em http://0.0.0.0:6200
 ```
 
----
+
 
 ## 🗂️ Estrutura de Diretórios
 
@@ -212,7 +211,7 @@ PgDas/
 └── README.md              # Documentação
 ```
 
----
+
 
 ## ✅ Testes
 
@@ -222,7 +221,7 @@ python testes/teste.py             # Builder + Validação de JSON
 python testes/consulta_vigencia.py # Validação de vigência
 ```
 
----
+
 
 ## 🤝 Contribuição
 
@@ -231,16 +230,16 @@ python testes/consulta_vigencia.py # Validação de vigência
 3. Commit com mensagens claras
 4. Abra um **Pull Request** detalhando a mudança
 
----
+
 
 ## 📝 Licença
 
 Este projeto está sob a licença [MIT](LICENSE).
 
----
+
 
 ## 👤 Autor
 
 **Renata Boppre Scharf**
 
----
+
