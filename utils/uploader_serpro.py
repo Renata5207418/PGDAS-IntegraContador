@@ -1,85 +1,138 @@
-from __future__ import annotations
 import os
 import json
-import logging
 import time
+import logging
 import requests
-from typing import Dict, Any, Tuple
-
-_URL_BASE = os.getenv("URL_BASE").rstrip("/")
-_API_KEY = os.getenv("API_KEY_SERPRO")
-_CNPJ_CONT = os.getenv("CNPJ_CONT")
-_TIPO_DOC = 2
-_ENDPOINT = f"{_URL_BASE}/Declarar"
-_DEFAULT_TO = int(os.getenv("SERPRO_READ_TIMEOUT", 60))
+from typing import Any, Dict, Tuple
+from auth.token_auth import TokenAutenticacao
 
 
-# --------------------------------------------------------------------------
-def _cabecalhos(access: str, jwt: str) -> Dict[str, str]:
-    return {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "X-Api-Key": _API_KEY,
-        "Authorization": f"Bearer {access}",
-        "jwt_token": jwt,
-        "Role-Type": "TERCEIROS",
-    }
+class SerproClient:
+    """
+    Cliente genérico para chamar APIs SERPRO de PGDAS (Declarar) e DAS (Emitir).
+    """
 
-
-def _envelope(dados: Dict[str, Any]) -> Dict[str, Any]:
-    parte = {"numero": _CNPJ_CONT, "tipo": _TIPO_DOC}
-    return {
-        "contratante":      parte,
-        "autorPedidoDados": parte,
-        "contribuinte":     {"numero": dados["cnpjCompleto"], "tipo": _TIPO_DOC},
-        "pedidoDados": {
-            "idSistema": "PGDASD",
-            "idServico": "TRANSDECLARACAO11",
-            "versaoSistema": "1.0",
-            "dados": json.dumps(dados, ensure_ascii=False),
+    _SERVICES = {
+        "pgdas": {
+            "path": "Declarar",
+            "jwt_header": "jwt_token",
+            "id_servico": "TRANSDECLARACAO11",
+        },
+        "das": {
+            "path": "Emitir",
+            "jwt_header": "jwt_token",
+            "id_servico": "GERARDAS12",
         },
     }
 
+    def __init__(self):
+        self.url_base = os.getenv("URL_BASE", "").rstrip("/")
+        self.api_key = os.getenv("API_KEY_SERPRO", "")
+        self.cnpj_cont = os.getenv("CNPJ_CONT", "")
+        self.tipo_doc = int(os.getenv("TIPO_DOC", "2"))
+        # tempo padrão de leitura
+        self._default_to = int(os.getenv("SERPRO_READ_TIMEOUT", "60"))
+        self._auth = TokenAutenticacao()
 
-# --------------------------------------------------------------------------
-def enviar(payload_fiscal: Dict[str, Any], access_token: str, jwt_token: str, timeout: Tuple[int, int] | None = None, retries: int = 2) -> Dict[str, Any]:
-    """
-    POST /Declarar.  Devolve {"status": http, "body": json|texto}.
-    * 2xx → sucesso imediato
-    * 4xx → falha imediata (não reenvia)
-    * 5xx ou erro de rede → faz até `retries` tentativas e,
-      se esgotar, levanta RuntimeError("Falha persistente…", último_resp).
-    """
-    if timeout is None:
-        timeout = (10, _DEFAULT_TO)
+    def _build_headers(self, service: str) -> Dict[str, str]:
+        access, jwt = self._auth.obter_token()
+        cfg = self._SERVICES[service]
+        return {
+            "Content-Type": "application/json",
+            "Accept":        "application/json",
+            "X-Api-Key":     self.api_key,
+            "Authorization": f"Bearer {access}",
+            cfg["jwt_header"]: jwt,
+            "Role-Type":     "TERCEIROS",
+        }
 
-    data = json.dumps(_envelope(payload_fiscal), ensure_ascii=False).encode()
-    ultimo_resp: Dict[str, Any] = {"status": None, "body": "nenhuma resposta"}
+    def build_headers(self, service: str) -> Dict[str, str]:
+        """
+        Mesmo que _build_headers, mas sem usar membro protegido.
+        """
+        return self._build_headers(service)
 
-    for tent in range(1, retries + 2):
-        try:
-            r = requests.post(_ENDPOINT, headers=_cabecalhos(access_token, jwt_token),
-                              data=data, timeout=timeout)
+    def _build_envelope(self, service: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Monta o corpo da requisição conforme serviço:
+          - pgdas: data deve ser o payload fiscal retornado por json_builder.montar_json()
+          - das:   data deve ter as chaves 'cnpj', 'pa' e opcional 'dataConsolidacao'
+        """
+        parte = {"numero": self.cnpj_cont, "tipo": self.tipo_doc}
+        svc = self._SERVICES[service]
+
+        if service == "pgdas":
+            # já é um dict pronto para ser serializado
+            dados_json = json.dumps(data, ensure_ascii=False)
+            numero_contribuinte = data["cnpjCompleto"]
+        else:  # das
+            dados_internos = {"periodoApuracao": str(data["pa"]).zfill(6)}
+            if data.get("dataConsolidacao"):
+                dados_internos["dataConsolidacao"] = data["dataConsolidacao"]
+            dados_json = json.dumps(dados_internos, ensure_ascii=False)
+            numero_contribuinte = data["cnpj"]
+
+        return {
+            "contratante":      parte,
+            "autorPedidoDados": parte,
+            "contribuinte":     {"numero": numero_contribuinte, "tipo": self.tipo_doc},
+            "pedidoDados": {
+                "idSistema":     "PGDASD",
+                "idServico":     svc["id_servico"],
+                "versaoSistema": "1.0",
+                "dados":         dados_json,
+            },
+        }
+
+    def enviar(
+        self,
+        service: str,
+        data: Dict[str, Any],
+        timeout: Tuple[int, int] = None,
+        retries: int = 2
+    ) -> Dict[str, Any]:
+        """
+        Faz POST para /<path> passando envelope + headers adequados.
+        Retorna {'status': HTTP, 'body': json|texto}.
+        """
+        if service not in self._SERVICES:
+            raise ValueError(f"Serviço desconhecido: {service!r}")
+
+        url = f"{self.url_base}/{self._SERVICES[service]['path']}"
+        headers = self._build_headers(service)
+        envelope = self._build_envelope(service, data)
+        payload = json.dumps(envelope, ensure_ascii=False).encode()
+
+        if timeout is None:
+            timeout = (10, self._default_to)
+
+        last_resp = {"status": None, "body": None}
+        for attempt in range(retries + 1):
             try:
-                body = r.json()
-            except ValueError:
-                body = r.text
+                r = requests.post(url, headers=headers, data=payload, timeout=timeout)
+                try:
+                    body = r.json()
+                except ValueError:
+                    body = r.text
+                status = r.status_code
+                resp = {"status": status, "body": body}
 
-            status = r.status_code
-            resp = {"status": status, "body": body}
+                # 2xx → sucesso imediato; 4xx → falha sem retry
+                if 200 <= status < 300 or 400 <= status < 500:
+                    return resp
 
-            if 200 <= status < 300 or 400 <= status < 500:
-                return resp
+                last_resp = resp
+                logging.warning(
+                    "SERPRO %s [%s] tent %s/%s → %s",
+                    service, status, attempt + 1, retries + 1, body
+                )
+            except requests.RequestException as e:
+                last_resp = {"status": None, "body": str(e)}
+                logging.error(
+                    "Erro rede %s tent %s/%s",
+                    e, attempt + 1, retries + 1
+                )
 
-            ultimo_resp = resp
-            logging.warning("SERPRO %s (tent %s/%s) – body: %s",
-                            status, tent, retries + 1, body)
+            time.sleep(2 * (attempt + 1))
 
-        except requests.RequestException as exc:
-            ultimo_resp = {"status": None, "body": str(exc)}
-            logging.error("erro rede %s tent %s/%s", exc, tent, retries + 1)
-
-        if tent <= retries:
-            time.sleep(2 * tent)
-
-    raise RuntimeError("Falha persistente ao chamar SERPRO", ultimo_resp)
+        raise RuntimeError("Falha persistente ao chamar SERPRO", last_resp)

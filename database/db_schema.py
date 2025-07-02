@@ -1,3 +1,4 @@
+from pymongo.errors import DuplicateKeyError
 from pymongo import MongoClient, ASCENDING
 from dotenv import load_dotenv
 from typing import Any, Dict
@@ -40,12 +41,6 @@ def _now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
-def _to_json_str(obj: Any) -> str | None:
-    if obj is None:
-        return None
-    return json.dumps(obj, ensure_ascii=False)
-
-
 # ---------------------------------------------------------------------
 # API pública — idêntica à versão SQLite
 # ---------------------------------------------------------------------
@@ -63,7 +58,19 @@ def insert_transmission(cnpj: str, pa: int, tipo: int, payload: Dict[str, Any]) 
         "criado_em": _now_iso(),
         "payload_json": payload,
     }
-    _collection.insert_one(doc)
+
+    if tipo == 1:
+        # ---------- SOMENTE INSERE ----------
+        # Se o _id já existir o DuplicateKeyError sobe para o chamador
+        _collection.insert_one(doc)
+
+    elif tipo == 2:
+        # ---------- SUBSTITUI ----------
+        _collection.replace_one({"_id": _id}, doc, upsert=True)
+
+    else:
+        raise ValueError(f"Tipo de declaração inesperado: {tipo}")
+
     return _id
 
 

@@ -1,7 +1,5 @@
-from pprint import pprint
-from database.dominio_db import buscar_simples
+from database.dominio_db import buscar_folha
 
-
-resultados = buscar_simples('00000000', pa='202505')
-
-pprint(resultados)
+cnpj = "04691199000100"
+for mes in [202401, 202402, 202403, 202404, 202405]:
+    print(mes, buscar_folha(cnpj, mes))

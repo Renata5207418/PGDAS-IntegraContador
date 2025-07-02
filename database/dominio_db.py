@@ -75,20 +75,12 @@ DB_PARAMS = {
 }
 
 
-def buscar_simples(
-    cnpj_raiz: str,
-    anexo: Optional[int] = None,
-    secao: Optional[int] = None,
-    pa: Optional[str] = None,
-    data_ini: Optional[date] = None,
-    data_fim: Optional[date] = None,
-) -> Iterable[Dict]:
+def buscar_simples(cnpj_raiz: str, anexo: Optional[int] = None, secao: Optional[int] = None, pa: Optional[str] = None, data_ini: Optional[date] = None, data_fim: Optional[date] = None) -> Iterable[Dict]:
     """
     Lê bethadba.efsdoimp_simples_nacional (alias sn) unida à geempre (ge).
     • Passe `pa="AAAAMM"` para um único período.
     • Ou use `data_ini`/`data_fim` para intervalo.
     """
-
     clean = re.sub(r"\D", "", cnpj_raiz)[:8]
     raiz = clean[:8] if len(clean) >= 8 else clean
     filtros = ["ge.cgce_emp LIKE ?"]
@@ -145,3 +137,45 @@ def buscar_simples(
          "data_sim": r[7]}
         for r in rows
     ]
+
+
+def buscar_folha(cnpj_raiz: str, pa: int) -> Optional[float]:
+    """
+    Lê bethadba.efsimples_nacional_folha_anterior (alias fa).
+    Retorna o total de 'valor' **exatamente** no mês pa (AAAAMM).
+    """
+    clean = re.sub(r"\D", "", cnpj_raiz)[:8]
+    raiz = clean if len(clean) >= 8 else clean
+
+    ano = pa // 100
+    mes = pa % 100
+
+    sql = """
+        SELECT
+          SUM(fa.valor)          AS soma_valor,
+          SUM(fa.VALOR_INSS_CPP) AS soma_inss
+        FROM bethadba.efsimples_nacional_folha_anterior fa
+        JOIN bethadba.geempre ge
+          ON ge.codi_emp = fa.codi_emp
+       WHERE ge.cgce_emp LIKE ?
+         AND YEAR(fa.periodo)  = ?
+         AND MONTH(fa.periodo) = ?
+    """
+    params = (f"{raiz}%", ano, mes)
+
+    db = DatabaseConnection(**DB_PARAMS)
+    db.connect()
+    rows = db.execute_query(sql, params)
+    db.close()
+
+    if not rows:
+        return None
+
+    soma_valor, soma_inss = rows[0]
+
+    # converte cada um pra float, tratando None como 0.0
+    v = float(soma_valor) if soma_valor is not None else 0.0
+    i = float(soma_inss) if soma_inss is not None else 0.0
+
+    total = v + i
+    return total if total != 0 else 0.0

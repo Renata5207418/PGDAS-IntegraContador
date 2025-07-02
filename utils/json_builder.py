@@ -2,6 +2,7 @@ from __future__ import annotations
 from datetime import datetime, date
 from typing import Dict, Any, Iterable
 from dicionario_id.segment_rules import SEGMENT_RULES
+from database.dominio_db import buscar_folha as _buscar_folha_db
 
 
 # ---------------------------------------------------------------------------
@@ -33,20 +34,41 @@ def _pa_anteriores(pa_atual: int, n: int) -> list[int]:
 
 
 # ---------------------------------------------------------------------------
-# folha – stub
+# folha
 # ---------------------------------------------------------------------------
-def buscar_folha(_cnpj: str, _pa: int) -> float | None:
-    return None
+def buscar_folha(cnpj: str, pa: int) -> float | None:
+    """Chama diretamente a função do domínio_db para trazer o valor."""
+    return _buscar_folha_db(cnpj, pa)
 
 
 def _folhas_salario(cnpj: str, pa: int) -> list[dict[str, float]]:
-    folhas, tem_valor = [], False
-    for pa_ant in _pa_anteriores(pa, 12):
-        valor = buscar_folha(cnpj, pa_ant) or 0.0
-        if valor:
-            tem_valor = True
-        folhas.append({"pa": pa_ant, "valor": round(valor, 2)})
-    return folhas if tem_valor else []
+    meses = _pa_anteriores(pa, 12)
+    folhas = []
+    for m in meses:
+        valor = buscar_folha(cnpj, m) or 0.0
+        folhas.append({"pa": m, "valor": round(valor, 2)})
+    # 2) filtra só se existir alguma folha com valor > 0
+    if not any(f["valor"] > 0 for f in folhas):
+        return []
+    # 3) ordena por pa crescente e devolve
+    return sorted(folhas, key=lambda f: f["pa"])
+
+
+# IDs de atividade "sujeito ao fator r" do anexo 3
+_IDS_FATOR_R_ANEXO_3 = {10, 11, 12}
+
+
+def _precisa_folha(rows):
+    # Se algum anexo 5, já precisa folha
+    if any(r["anexo"] == 5 for r in rows):
+        return True
+    # Para Anexo 3, verifica se algum idAtividade é do fator R
+    for r in rows:
+        if r["anexo"] == 3:
+            cfg = SEGMENT_RULES.get((r["anexo"], r["secao"], r["tabela"]))
+            if cfg and cfg["id"] in _IDS_FATOR_R_ANEXO_3:
+                return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -136,10 +158,14 @@ def montar_json(rows: Iterable[Dict[str, Any]], tipo_declaracao: int = 1) -> Dic
         "valorFixoIcms": None,
         "valorFixoIss": None,
         "receitasBrutasAnteriores": [],
-        "folhasSalario": _folhas_salario(cnpj_matriz, pa),
         "naoOptante": None,
         "estabelecimentos": []
     }
+    if _precisa_folha(rows):
+        folhas = _folhas_salario(cnpj_matriz, pa)
+        if folhas:
+            print(f"Incluindo folhasSalario para {cnpj_matriz} PA {pa}: {folhas}")
+            declaracao["folhasSalario"] = folhas
 
     payload = {
         "cnpjCompleto": cnpj_matriz,
@@ -152,7 +178,6 @@ def montar_json(rows: Iterable[Dict[str, Any]], tipo_declaracao: int = 1) -> Dic
 
     # ─── agrega receitas por estabelecimento / atividade ───────────────
     mapa_estab: dict[int, dict[str, Any]] = {}
-
     for r in rows:
         print(
             f"PROCESSANDO: codi_emp={r['codi_emp']} cnpj={r['cgce_emp']} anexo={r['anexo']} secao={r['secao']} tabela={r['tabela']} basen={r['basen']}")

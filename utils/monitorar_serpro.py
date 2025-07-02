@@ -1,59 +1,58 @@
 from __future__ import annotations
 import os
-import json
 import time
 import logging
 import requests
 from dotenv import load_dotenv
 from typing import Dict, Any, Tuple
-from auth.token_auth import TokenAutenticacao
-from utils.uploader_serpro import _cabecalhos
+from utils.uploader_serpro import SerproClient
 
 load_dotenv()
 
 _URL_BASE = os.getenv("URL_BASE", "").rstrip("/")
-_API_KEY = os.getenv("API_KEY_SERPRO")
 _ENDPOINT = f"{_URL_BASE}/Monitorar"
 _POLL_SEC = 4
 
+client = SerproClient()
+
 
 def _envelope(pedido_id: str) -> Dict[str, Any]:
-    """
-    Payload mínimo exigido pela rota /Monitorar do Integra-SN.
-    """
     return {"idPedidoDados": pedido_id}
 
 
-# --------------------------------------------------------------------------- #
-def monitorar_pedido(pedido_id: str, tok: TokenAutenticacao, *, timeout: Tuple[int, int] = (10, 30), max_min: int = 3) -> Dict[str, Any]:
+def monitorar_pedido(pedido_id: str, *, timeout: Tuple[int, int] = (10, 30), max_min: int = 3) -> Dict[str, Any]:
     """
-    Faz **polling** em `/Monitorar` até o pedido sair de *PROCESSANDO* / *EM_FILA*
-    ou até `max_min` minutos.
+    Faz polling em /Monitorar até o pedido sair de PROCESSANDO ou EM_FILA
+    ou até max_min minutos.
     """
-    limite = time.time() + 60 * max_min
+    deadline = time.time() + 60 * max_min
 
     while True:
-        # 1) garante tokens válidos
-        access, jwt = tok.obter_token()
-        # 2) dispara /Monitorar
+        # monta headers (inclui Bearer, jwt e X-Api-Key)
+        headers = client.build_headers("pgdas")
+
+        # dispara /Monitorar
         r = requests.post(
-                _ENDPOINT,
-                headers=_cabecalhos(access, jwt) | {"X-Api-Key": _API_KEY},
-                data=json.dumps(_envelope(pedido_id), ensure_ascii=False).encode(),
-                timeout=timeout
-            )
+            _ENDPOINT,
+            headers=headers,
+            json=_envelope(pedido_id),
+            timeout=timeout
+        )
 
         try:
             body = r.json()
         except ValueError:
             body = r.text
+
         logging.info("Monitorar %s → HTTP %s", pedido_id, r.status_code)
 
-        # 3) terminou?
-        if r.status_code == 200 and body.get("situacao") not in ("PROCESSANDO", "EM_FILA"):
+        # terminou?
+        if r.status_code == 200 \
+           and isinstance(body, dict) \
+           and body.get("situacao") not in ("PROCESSANDO", "EM_FILA"):
             return body
 
-        if time.time() >= limite:
+        if time.time() >= deadline:
             raise RuntimeError("Monitorar: tempo máximo excedido")
 
         time.sleep(_POLL_SEC)
