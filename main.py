@@ -136,6 +136,52 @@ def transmitir_pgdas():
                 resultados.append(resultado)
                 continue
 
+            # ─── novo bloco: se não for 2xx, trate como erro ──────────────────────
+            if not (200 <= resp.get("status", 0) < 300):
+                resultados.append({
+                    "cnpj": cnpj,
+                    "status": "FALHA",
+                    "erro": "SERPRO devolveu HTTP %s" % resp["status"],
+                    "serpro_body": resp["body"],
+                })
+                update_failure(cnpj, pa, tipo, resp, "HTTP %s" % resp["status"])
+                continue
+
+            # 2.5) Verifica se a ORIGINAL já estava concluída
+            if (tipo == 1 and
+                    resp.get("status") == 200 and
+                    isinstance(resp.get("body"), dict) and
+                    resp["body"].get("codigoStatus") == "CONCLUIDO" and
+                    isinstance(resp["body"].get("dados"), dict) and
+                    resp["body"]["dados"].get("reciboDeclaracao")):
+                resultados.append({
+                    "cnpj": cnpj,
+                    "status": "JA_TRANSMITIDA",
+                    "mensagem": "Declaração ORIGINAL já estava transmitida no PGDAS-D",
+                    "recibo": resp["body"]["dados"]["reciboDeclaracao"],
+                    "pdf_b64": resp["body"]["dados"].get("declaracao")
+                })
+                continue
+            # 3) Grava no Mongo
+            try:
+                insert_transmission(cnpj, pa, tipo, payload)
+            except DuplicateKeyError:
+                resultado = {
+                    "cnpj": cnpj,
+                    "status": "JA_TRANSMITIDA",
+                    "mensagem": (
+                        "Declaração ORIGINAL já transmitida..."
+                        if tipo == 1
+                        else "Declaração RETIFICADORA já existe..."
+                    ),
+                }
+                if resp and isinstance(resp.get("body"), dict):
+                    dados = resp["body"].get("dados") or {}
+                    resultado["recibo"] = dados.get("reciboDeclaracao")
+                    resultado["pdf_b64"] = dados.get("declaracao")
+                resultados.append(resultado)
+                continue
+
             # 4) marca SUCESSO no banco
             update_success(cnpj, pa, tipo, resp)
 
