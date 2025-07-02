@@ -4,13 +4,9 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Build](https://img.shields.io/github/actions/workflow/status/seu-usuario/PgDas/ci.yml?branch=main)](https://github.com/seu-usuario/PgDas/actions)
 
-# PgDas
+#  PGDAS-D
 
-Automatiza a geração e transmissão de declarações **PGDAS-D** ao SERPRO, com:
-- Autenticação OAuth2 + mTLS  
-- Persistência em **MongoDB**  
-- Monitoramento assíncrono de pedidos  
-
+> Automação completa do fluxo PGDAS-D: geração, transmissão e persistência de DAS junto ao SERPRO.
 ---
 
 ## 📑 Índice
